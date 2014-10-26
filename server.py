@@ -6,6 +6,29 @@ import SocketServer
 import time
 import cgi
 
+import json
+
+from pyspatialite import dbapi2 as db
+
+class TraceHandler():
+
+    def processTrace(self, trace):
+        conn = db.connect('navirec.sqlite')
+        cursor = conn.cursor()
+        json_object = json.loads(trace)
+        session_id = json_object["session_id"]
+        for trace in json_object["trace_seq"]:
+           timestamp = trace['timestamp']
+           accuracy = int(trace['location']['accuracy'])
+           lat = float(trace['location']['latlng']['lat'])
+           lng = float(trace['location']['latlng']['lng'])
+           geom = "GeomFromText('POINT(%g %g)', 4326)" % (lat, lng)
+           print geom
+           sql = "INSERT INTO Traces (session_id, timestamp, geom, accuracy)"
+           sql += "VALUES (?, ?, " + geom + ", ?)"
+           cursor.execute(sql, (session_id, timestamp, accuracy))
+        conn.commit()
+           
 class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
     def do_GET(self):
@@ -22,14 +45,16 @@ class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
     def do_POST(self):
       try:
+        handler = TraceHandler()
         length = int(self.headers.getheader('content-length'))
         data = self.rfile.read(int(length))
-        with open(str(time.time())+".json", 'w') as fh:
-            fh.write(data.decode())
+        handler.processTrace(data.decode())
         self.send_response(200)
+        self.end_headers()
       except:
         self.send_error(500)
         raise
+      return
 
 class ForkingHTTPServer(SocketServer.ForkingMixIn, BaseHTTPServer.HTTPServer):
     def finish_request(self, request, client_address):
