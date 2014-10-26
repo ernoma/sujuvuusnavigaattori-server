@@ -14,6 +14,10 @@ class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Allow", "POST")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST")
+        self.send_header("Access-Control-Max-Age", "3628800")
+        self.send_header("Access-Control-Allow-Headers", "X-Requested-With, accept, content-type")
         self.end_headers()
 
     def do_POST(self):
