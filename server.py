@@ -5,7 +5,7 @@ import SimpleHTTPServer
 import SocketServer
 import time
 import cgi
-
+import urlparse
 import json
 
 from pyspatialite import dbapi2 as db
@@ -22,17 +22,37 @@ class TraceHandler():
            accuracy = int(trace['location']['accuracy'])
            lat = float(trace['location']['latlng']['lat'])
            lng = float(trace['location']['latlng']['lng'])
-           geom = "GeomFromText('POINT(%g %g)', 4326)" % (lat, lng)
-           print geom
+           geom = "GeomFromText('POINT(%.10f %.10f)', 4326)" % (lng, lat)
            sql = "INSERT INTO Traces (session_id, timestamp, geom, accuracy)"
            sql += "VALUES (?, ?, " + geom + ", ?)"
            cursor.execute(sql, (session_id, timestamp, accuracy))
         conn.commit()
-           
+        conn.close()
+
+    def getTrace(self, id):
+        conn = db.connect('navirec.sqlite')
+        cursor = conn.cursor()
+        sql = "select asGeoJSON(makeLine(geom)) from Traces where session_id=? and accuracy < 20 order by timestamp;"
+        cursor.execute(sql, id)
+        geojson = cursor.fetchone()
+        conn.close()
+        return geojson
+
 class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
     def do_GET(self):
-        self.send_error(400)
+        parsed_path = urlparse.urlparse(self.path)
+        query_components = urlparse.parse_qs(parsed_path.query)
+        if "/get_trace" == parsed_path.path:
+            self.send_response(200, 'OK')
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(bytes(TraceHandler().getTrace(query_components['id'])[0]))
+        elif "/nagios_check" == parsed_path.path:
+            self.send_response(200, 'OK')
+            self.end_headers()
+        else:
+            self.send_error(400)
 
     def do_OPTIONS(self):
         self.send_response(200)
